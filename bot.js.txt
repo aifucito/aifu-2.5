@@ -1,0 +1,15 @@
+// bot.js
+const TelegramBot = require('node-telegram-bot-api');
+
+// Token de BotFather (se configura como variable de entorno en Render)
+const token = process.env.TELEGRAM_TOKEN;
+
+// Crear bot con polling
+const bot = new TelegramBot(token, { polling: true });
+
+// Comando /start
+bot.onText(/\/start/, (msg) => {
+  bot.sendMessage(msg.chat.id, "🛸 ¡Hola! Soy AiFucito, tu asistente ufológico.");
+});
+
+console.log("Bot iniciado correctamente...");
