@@ -129,41 +129,107 @@ function agregarReportePendiente(reporte) {
   reportesPendientes.push(reporte);
 }
 
+// ========= PERSONALIDAD DEL BOT =========
+const frasesAmistosas = [
+  "¡Hola, explorador de lo desconocido! 👽",
+  "¡Qué gusto verte de nuevo en AIFU! 🌌",
+  "Recuerda: los fenómenos no esperan… pero tu café sí ☕",
+  "Eres uno de nuestros curiosos más dedicados, ¡gracias por estar aquí! ⭐"
+];
+
+const frasesBromas = [
+  "Si veo un OVNI y no me avisás, me pongo celoso 👀",
+  "Cuidado con los extraterrestres, algunos dicen que bailan salsa 💃🛸",
+  "Si fueras un alienígena, serías de los VIP 😎"
+];
+
+const frasesFirmes = [
+  "Recuerda reportar solo fenómenos reales, sin spam ni palabras violentas ⚠️",
+  "Tu reporte fue marcado para revisión, mantenemos la calidad AIFU 💼",
+  "No toleramos lenguaje ofensivo. Mantén la cordialidad 🛡"
+];
+
+function saludoAleatorio() {
+  const r = Math.random();
+  if (r < 0.5) return frasesAmistosas[Math.floor(Math.random() * frasesAmistosas.length)];
+  else return frasesBromas[Math.floor(Math.random() * frasesBromas.length)];
+}
+
+function mensajeVIP(userId) {
+  if (!esVIP(userId)) return null;
+  const vipMsg = [
+    "⭐ Gracias por ser VIP, eres parte de nuestra élite de exploradores.",
+    "¡Tu radar VIP está activo! Mantente atento a los fenómenos.",
+    "Como VIP, recibes alertas antes que todos. No abuses de tu poder 😜"
+  ];
+  return vipMsg[Math.floor(Math.random() * vipMsg.length)];
+}
+
+// ========= ESCUCHA GENERAL DE MENSAJES =========
 bot.on('text', ctx => {
   const id = ctx.from.id;
-  if (!sesiones[id]) return;
 
-  const sesion = sesiones[id];
-  if (sesion.estado === 'ubicacion') {
-    sesion.ubicacion = ctx.message.text;
-    sesion.estado = 'mensaje';
-    ctx.reply("Describe el fenómeno.");
+  // Si está en sesión de reporte, mantener flujo normal
+  if (sesiones[id]) {
+    const sesion = sesiones[id];
+    if (sesion.estado === 'ubicacion') {
+      sesion.ubicacion = ctx.message.text;
+      sesion.estado = 'mensaje';
+      ctx.reply("Describe el fenómeno.");
+      return;
+    }
+    if (sesion.estado === 'mensaje') {
+      const nuevoReporte = {
+        id: Date.now(),
+        usuario: id,
+        fecha: new Date().toISOString(),
+        mensaje: ctx.message.text,
+        ubicacion: sesion.ubicacion,
+        categoria: "luz",
+        vip: true
+      };
+
+      if (esReporteDudoso(nuevoReporte)) {
+        agregarReportePendiente(nuevoReporte);
+        ctx.reply("⚠️ Tu reporte fue marcado para revisión por el equipo de AIFU.");
+      } else {
+        reportes.push(nuevoReporte);
+        guardarDatos();
+        publicarReporte(nuevoReporte);
+        ctx.reply("Reporte registrado correctamente.");
+      }
+      delete sesiones[id];
+      return;
+    }
+  }
+
+  // RESPUESTAS DE PERSONALIDAD
+  const texto = ctx.message.text.toLowerCase();
+
+  if (texto.includes('hola') || texto.includes('buenos')) {
+    let msg = saludoAleatorio();
+    const vipMsg = mensajeVIP(id);
+    if (vipMsg) msg += `\n\n${vipMsg}`;
+    ctx.reply(msg);
     return;
   }
 
-  if (sesion.estado === 'mensaje') {
-    const nuevoReporte = {
-      id: Date.now(),
-      usuario: id,
-      fecha: new Date().toISOString(),
-      mensaje: ctx.message.text,
-      ubicacion: sesion.ubicacion,
-      categoria: "luz",
-      vip: true // todos VIP fase de prueba
-    };
-
-    if (esReporteDudoso(nuevoReporte)) {
-      agregarReportePendiente(nuevoReporte);
-      ctx.reply("⚠️ Tu reporte fue marcado para revisión por el equipo de AIFU.");
-    } else {
-      reportes.push(nuevoReporte);
-      guardarDatos();
-      publicarReporte(nuevoReporte);
-      ctx.reply("Reporte registrado correctamente.");
-    }
-
-    delete sesiones[id];
+  if (texto.includes('gracias') || texto.includes('muy bien')) {
+    ctx.reply("¡De nada! Recuerda que los cielos siempre tienen secretos 🌌");
+    return;
   }
+
+  if (texto.includes('problema') || texto.includes('error')) {
+    ctx.reply("Tranquilo, amigo. Estamos aquí para ayudarte. Si es sobre un reporte, ¡hazlo bien detallado! 🛠");
+    return;
+  }
+
+  if (texto.length < 3 || /(spam|odio|matar|explosión)/i.test(texto)) {
+    ctx.reply(frasesFirmes[Math.floor(Math.random() * frasesFirmes.length)]);
+    return;
+  }
+
+  ctx.reply("¡Interesante! 🌠 ¿Quieres reportar un fenómeno o ver el mapa de calor?");
 });
 
 // ========= PUBLICACIÓN =========
