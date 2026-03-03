@@ -1,13 +1,14 @@
+// ================= BOT AIFUCITO 4.2 =================
 console.log("TOKEN CARGADO:", process.env.BOT_TOKEN ? "SI" : "NO");
 const { Telegraf, Markup } = require('telegraf');
 const fs = require('fs');
 const path = require('path');
-const express = require('express'); // <-- agregado para servidor HTTP
+const express = require('express');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
 // ========= CONFIG =========
-const ADMIN_ID = 000000000; // ← TU ID
+const ADMIN_ID = 000000000; // TU ID
 const FECHA_CORTE_FUNDADOR = new Date('2026-04-01');
 const CANALES = {
   radar: '@aifu_radar',
@@ -23,13 +24,9 @@ if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
 const usuariosFile = path.join(dataDir, 'usuarios.json');
 const reportesFile = path.join(dataDir, 'reportes.json');
 
-let usuarios = fs.existsSync(usuariosFile)
-  ? JSON.parse(fs.readFileSync(usuariosFile))
-  : {};
-
-let reportes = fs.existsSync(reportesFile)
-  ? JSON.parse(fs.readFileSync(reportesFile))
-  : [];
+let usuarios = fs.existsSync(usuariosFile) ? JSON.parse(fs.readFileSync(usuariosFile)) : {};
+let reportes = fs.existsSync(reportesFile) ? JSON.parse(fs.readFileSync(reportesFile)) : [];
+let reportesPendientes = []; // reportes dudosos/privados
 
 function guardarDatos() {
   fs.writeFileSync(usuariosFile, JSON.stringify(usuarios, null, 2));
@@ -120,12 +117,23 @@ bot.hears('Reportar', ctx => {
   ctx.reply("Indica ciudad y país.");
 });
 
+// Detectar reportes dudosos
+function esReporteDudoso(reporte) {
+  const spam = !reporte.mensaje || reporte.mensaje.length < 5;
+  const violento = /(matar|odio|explosión)/i.test(reporte.mensaje);
+  return spam || violento;
+}
+
+// Agregar reporte dudoso
+function agregarReportePendiente(reporte) {
+  reportesPendientes.push(reporte);
+}
+
 bot.on('text', ctx => {
   const id = ctx.from.id;
   if (!sesiones[id]) return;
 
   const sesion = sesiones[id];
-
   if (sesion.estado === 'ubicacion') {
     sesion.ubicacion = ctx.message.text;
     sesion.estado = 'mensaje';
@@ -139,16 +147,22 @@ bot.on('text', ctx => {
       usuario: id,
       fecha: new Date().toISOString(),
       mensaje: ctx.message.text,
-      categoria: "luz",
       ubicacion: sesion.ubicacion,
-      multimedia: [],
-      vip: true // fase de prueba todos VIP
+      categoria: "luz",
+      vip: true // todos VIP fase de prueba
     };
-    reportes.push(nuevoReporte);
-    guardarDatos();
-    publicarReporte(nuevoReporte);
+
+    if (esReporteDudoso(nuevoReporte)) {
+      agregarReportePendiente(nuevoReporte);
+      ctx.reply("⚠️ Tu reporte fue marcado para revisión por el equipo de AIFU.");
+    } else {
+      reportes.push(nuevoReporte);
+      guardarDatos();
+      publicarReporte(nuevoReporte);
+      ctx.reply("Reporte registrado correctamente.");
+    }
+
     delete sesiones[id];
-    ctx.reply("Reporte registrado correctamente.");
   }
 });
 
@@ -172,7 +186,41 @@ bot.hears('Mapa de calor', ctx => {
   );
 });
 
-// ========= ADMIN =========
+// ========= ADMIN PRIVADO PARA REPORTES DUDOSOS =========
+const ADMIN_PRIVADOS = [ADMIN_ID];
+
+bot.command('pendientes', ctx => {
+  if (!ADMIN_PRIVADOS.includes(ctx.from.id)) return;
+  if (reportesPendientes.length === 0) return ctx.reply("✅ No hay reportes pendientes.");
+  let texto = "📂 Reportes pendientes:\n\n";
+  reportesPendientes.forEach((r,i)=>{
+    texto += `${i+1}. Usuario: ${r.usuario}, Fecha: ${r.fecha}, Mensaje: ${r.mensaje || 'Sin texto'}, Ubicación: ${r.ubicacion || 'Desconocida'}\n\n`;
+  });
+  ctx.reply(texto);
+});
+
+bot.command('validar', ctx => {
+  if (!ADMIN_PRIVADOS.includes(ctx.from.id)) return;
+  const args = ctx.message.text.split(' ');
+  const index = parseInt(args[1])-1;
+  if (isNaN(index) || !reportesPendientes[index]) return ctx.reply("❌ Índice inválido.");
+  const reporte = reportesPendientes.splice(index,1)[0];
+  reportes.push(reporte);
+  guardarDatos();
+  publicarReporte(reporte);
+  ctx.reply(`✅ Reporte validado y publicado correctamente (ID: ${reporte.id})`);
+});
+
+bot.command('eliminar', ctx => {
+  if (!ADMIN_PRIVADOS.includes(ctx.from.id)) return;
+  const args = ctx.message.text.split(' ');
+  const index = parseInt(args[1])-1;
+  if (isNaN(index) || !reportesPendientes[index]) return ctx.reply("❌ Índice inválido.");
+  reportesPendientes.splice(index,1);
+  ctx.reply("🗑 Reporte eliminado correctamente.");
+});
+
+// ========= ADMIN GENERAL =========
 bot.command('activarvip', ctx => {
   if (ctx.from.id !== ADMIN_ID) return;
   const id = ctx.message.text.split(' ')[1];
@@ -188,11 +236,16 @@ Usuarios: ${Object.keys(usuarios).length}
 Reportes totales: ${reportes.length}`);
 });
 
-// ========= EXPRESS + PUERTO =========
+// ========= EXPRESS + SERVIDOR =========
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Archivos estáticos (mapas y multimedia)
 app.use('/archivos', express.static(path.join(__dirname, 'uploads')));
-app.get('/', (req, res) => res.send('AIFUCITO Web Service activo'));
+app.use('/mapa', express.static(path.join(__dirname, 'mapa')));
+
+// Endpoint de prueba
+app.get('/', (req,res) => res.send('AIFUCITO Web Service activo'));
 app.listen(PORT, () => console.log(`Servidor web escuchando en puerto ${PORT}`));
 
 // ========= LANZAR BOT =========
