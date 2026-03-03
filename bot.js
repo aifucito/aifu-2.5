@@ -1,3 +1,4 @@
+console.log("TOKEN CARGADO:", process.env.BOT_TOKEN ? "SI" : "NO");
 const { Telegraf, Markup } = require('telegraf');
 const fs = require('fs');
 const path = require('path');
