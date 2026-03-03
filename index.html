@@ -1,0 +1,30 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Aifucito - Mapa de Calor</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+    <style>#map {height:100vh;width:100%;}</style>
+</head>
+<body>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/heatmapjs@2.0.5/heatmap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-heatmap/leaflet-heatmap.js"></script>
+<script>
+var map = L.map('map').setView([-32.5, -55.9], 6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+var cfg = {radius:25,maxOpacity:0.8,scaleRadius:true,useLocalExtrema:false,latField:'lat',lngField:'lng',valueField:'count'};
+var heatmapLayer = new HeatmapOverlay(cfg);
+heatmapLayer.addTo(map);
+async function cargarDatos() {
+    const response = await fetch('/api/reportes?tipo=ultimo_año&usuario=test&vip=false');
+    const data = await response.json();
+    heatmapLayer.setData({max:10,data:data.map(d=>({lat:d.lat||-32.5,lng:d.lng||-55.9,count:1}))});
+}
+cargarDatos();
+setInterval(cargarDatos,15000);
+</script>
+</body>
+</html>
