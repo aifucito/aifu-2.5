@@ -1,9 +1,11 @@
-// ================= BOT AIFUCITO 4.2 =================
+// ================= BOT AIFUCITO 4.2 COMPLETO =================
 console.log("TOKEN CARGADO:", process.env.BOT_TOKEN ? "SI" : "NO");
+
 const { Telegraf, Markup } = require('telegraf');
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
+const fetch = require('node-fetch');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
@@ -26,7 +28,11 @@ const reportesFile = path.join(dataDir, 'reportes.json');
 
 let usuarios = fs.existsSync(usuariosFile) ? JSON.parse(fs.readFileSync(usuariosFile)) : {};
 let reportes = fs.existsSync(reportesFile) ? JSON.parse(fs.readFileSync(reportesFile)) : [];
-let reportesPendientes = []; // reportes dudosos/privados
+let reportesPendientes = [];
+
+// Carpeta uploads para archivos de usuarios
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
 
 function guardarDatos() {
   fs.writeFileSync(usuariosFile, JSON.stringify(usuarios, null, 2));
@@ -94,7 +100,7 @@ bot.hears('Mi estado', ctx => {
   else ctx.reply("Cuenta estándar activa.");
 });
 
-// ========= INFO VIP (FASE DE PRUEBA) =========
+// ========= INFO VIP =========
 bot.hears('Hazte VIP', ctx => {
   ctx.reply(
 `⭐ Membresía VIP AIFU (fase de prueba)
@@ -129,7 +135,7 @@ function agregarReportePendiente(reporte) {
   reportesPendientes.push(reporte);
 }
 
-// ========= PERSONALIDAD DEL BOT =========
+// ========= PERSONALIDAD =========
 const frasesAmistosas = [
   "¡Hola, explorador de lo desconocido! 👽",
   "¡Qué gusto verte de nuevo en AIFU! 🌌",
@@ -165,11 +171,10 @@ function mensajeVIP(userId) {
   return vipMsg[Math.floor(Math.random() * vipMsg.length)];
 }
 
-// ========= ESCUCHA GENERAL DE MENSAJES =========
+// ========= ESCUCHA MENSAJES =========
 bot.on('text', ctx => {
   const id = ctx.from.id;
 
-  // Si está en sesión de reporte, mantener flujo normal
   if (sesiones[id]) {
     const sesion = sesiones[id];
     if (sesion.estado === 'ubicacion') {
@@ -186,7 +191,9 @@ bot.on('text', ctx => {
         mensaje: ctx.message.text,
         ubicacion: sesion.ubicacion,
         categoria: "luz",
-        vip: true
+        vip: true,
+        lat: -32.5, // por defecto, se puede mejorar con geocoding
+        lng: -55.9
       };
 
       if (esReporteDudoso(nuevoReporte)) {
@@ -203,9 +210,7 @@ bot.on('text', ctx => {
     }
   }
 
-  // RESPUESTAS DE PERSONALIDAD
   const texto = ctx.message.text.toLowerCase();
-
   if (texto.includes('hola') || texto.includes('buenos')) {
     let msg = saludoAleatorio();
     const vipMsg = mensajeVIP(id);
@@ -213,23 +218,39 @@ bot.on('text', ctx => {
     ctx.reply(msg);
     return;
   }
-
   if (texto.includes('gracias') || texto.includes('muy bien')) {
     ctx.reply("¡De nada! Recuerda que los cielos siempre tienen secretos 🌌");
     return;
   }
-
   if (texto.includes('problema') || texto.includes('error')) {
     ctx.reply("Tranquilo, amigo. Estamos aquí para ayudarte. Si es sobre un reporte, ¡hazlo bien detallado! 🛠");
     return;
   }
-
   if (texto.length < 3 || /(spam|odio|matar|explosión)/i.test(texto)) {
     ctx.reply(frasesFirmes[Math.floor(Math.random() * frasesFirmes.length)]);
     return;
   }
 
   ctx.reply("¡Interesante! 🌠 ¿Quieres reportar un fenómeno o ver el mapa de calor?");
+});
+
+// ========= SUBIDA DE ARCHIVOS =========
+bot.on('document', async ctx => {
+  const id = ctx.from.id;
+  const fileId = ctx.message.document.file_id;
+  const fileName = ctx.message.document.file_name;
+  const filePath = path.join(uploadsDir, `${Date.now()}_${fileName}`);
+
+  try {
+    const link = await ctx.telegram.getFileLink(fileId);
+    const res = await fetch(link);
+    const buffer = await res.buffer();
+    fs.writeFileSync(filePath, buffer);
+    ctx.reply(`Archivo recibido y guardado: ${fileName}`);
+  } catch (e) {
+    console.error(e);
+    ctx.reply("Error guardando archivo.");
+  }
 });
 
 // ========= PUBLICACIÓN =========
@@ -252,17 +273,17 @@ bot.hears('Mapa de calor', ctx => {
   );
 });
 
-// ========= ENDPOINT API PARA HEATMAP =========
+// ========= EXPRESS + ENDPOINTS =========
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use('/archivos', express.static(path.join(__dirname, 'uploads')));
+app.use('/archivos', express.static(uploadsDir));
 app.use('/mapa', express.static(path.join(__dirname, 'mapa')));
 
 app.get('/', (req,res) => res.send('AIFUCITO Web Service activo'));
 
-app.get('/api/reportes', (req, res) => {
-  const tipo = req.query.tipo; // solo por compatibilidad
+// Endpoint para heatmap
+app.get('/api/reportes', (req,res) => {
   const visibles = reportes.map(r => ({
     id: r.id,
     mensaje: r.mensaje,
@@ -273,7 +294,7 @@ app.get('/api/reportes', (req, res) => {
   res.json(visibles);
 });
 
-// ========= ADMIN PRIVADO PARA REPORTES DUDOSOS =========
+// ========= ADMIN =========
 const ADMIN_PRIVADOS = [ADMIN_ID];
 
 bot.command('pendientes', ctx => {
@@ -307,7 +328,6 @@ bot.command('eliminar', ctx => {
   ctx.reply("🗑 Reporte eliminado correctamente.");
 });
 
-// ========= ADMIN GENERAL =========
 bot.command('activarvip', ctx => {
   if (ctx.from.id !== ADMIN_ID) return;
   const id = ctx.message.text.split(' ')[1];
@@ -321,6 +341,7 @@ bot.command('panel', ctx => {
   ctx.reply(`Panel Admin:
 Usuarios: ${Object.keys(usuarios).length}
 Reportes totales: ${reportes.length}`);
+});
 
 // ========= LANZAR SERVIDOR Y BOT =========
 app.listen(PORT, () => console.log(`Servidor web escuchando en puerto ${PORT}`));
