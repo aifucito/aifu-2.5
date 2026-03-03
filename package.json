@@ -1,0 +1,12 @@
+{
+  "name": "aifucito",
+  "version": "4.1.0",
+  "description": "Sistema Oficial RED AIFU",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3"
+  }
+}
