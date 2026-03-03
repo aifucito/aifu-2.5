@@ -2,8 +2,6 @@
 const { Telegraf } = require('telegraf');
 const fs = require('fs');
 const path = require('path');
-const multer = require('multer');
-
 const bot = new Telegraf('8701174108:AAFgEE-uSZlDvrTNm_QIeDIINqmnCzQIOCM');
 
 const uploadsDir = path.join(__dirname, 'uploads');
