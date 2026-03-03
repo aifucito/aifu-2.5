@@ -252,6 +252,27 @@ bot.hears('Mapa de calor', ctx => {
   );
 });
 
+// ========= ENDPOINT API PARA HEATMAP =========
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use('/archivos', express.static(path.join(__dirname, 'uploads')));
+app.use('/mapa', express.static(path.join(__dirname, 'mapa')));
+
+app.get('/', (req,res) => res.send('AIFUCITO Web Service activo'));
+
+app.get('/api/reportes', (req, res) => {
+  const tipo = req.query.tipo; // solo por compatibilidad
+  const visibles = reportes.map(r => ({
+    id: r.id,
+    mensaje: r.mensaje,
+    ubicacion: r.ubicacion,
+    lat: r.lat || -32.5,
+    lng: r.lng || -55.9
+  }));
+  res.json(visibles);
+});
+
 // ========= ADMIN PRIVADO PARA REPORTES DUDOSOS =========
 const ADMIN_PRIVADOS = [ADMIN_ID];
 
@@ -300,20 +321,8 @@ bot.command('panel', ctx => {
   ctx.reply(`Panel Admin:
 Usuarios: ${Object.keys(usuarios).length}
 Reportes totales: ${reportes.length}`);
-});
 
-// ========= EXPRESS + SERVIDOR =========
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Archivos estáticos (mapas y multimedia)
-app.use('/archivos', express.static(path.join(__dirname, 'uploads')));
-app.use('/mapa', express.static(path.join(__dirname, 'mapa')));
-
-// Endpoint de prueba
-app.get('/', (req,res) => res.send('AIFUCITO Web Service activo'));
+// ========= LANZAR SERVIDOR Y BOT =========
 app.listen(PORT, () => console.log(`Servidor web escuchando en puerto ${PORT}`));
-
-// ========= LANZAR BOT =========
 bot.launch();
 console.log("AIFUCITO 4.2 activo");
