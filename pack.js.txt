@@ -1,0 +1,116 @@
+const fs = require('fs');
+const path = require('path');
+
+// Archivo donde guardamos reportes
+const DATA_FILE = path.join(__dirname, 'data.json');
+// Archivo del mapa de calor
+const MAPA_FILE = path.join(__dirname, 'mapa_calor.html');
+
+/**
+ * Leer reportes desde data.json
+ */
+function leerReportes() {
+    if (!fs.existsSync(DATA_FILE)) return [];
+    const data = fs.readFileSync(DATA_FILE);
+    return JSON.parse(data);
+}
+
+/**
+ * Guardar un reporte nuevo
+ * reporte = {
+ *   usuario: 'TelegramID',
+ *   nombre: 'Nombre del usuario',
+ *   pais: 'País',
+ *   ciudad: 'Ciudad/Barrio',
+ *   gps: {lat: 0.0, lon: 0.0},
+ *   descripcion: 'Texto del reporte',
+ *   intensidad: 'verde|amarillo|rojo',
+ *   fecha: 'YYYY-MM-DD',
+ *   vip: true|false,
+ *   archivos: [] // URLs o nombres de archivos
+ * }
+ */
+function guardarReporte(reporte) {
+    const reportes = leerReportes();
+    reportes.push(reporte);
+    fs.writeFileSync(DATA_FILE, JSON.stringify(reportes, null, 2));
+    actualizarMapa(reportes);
+}
+
+/**
+ * Actualizar el mapa de calor
+ * Genera un mapa HTML básico con puntos de los reportes
+ */
+function actualizarMapa(reportes) {
+    const heatPoints = reportes.map(r => {
+        if (r.gps && r.gps.lat && r.gps.lon) {
+            return `[${r.gps.lat}, ${r.gps.lon}]`;
+        }
+        return null;
+    }).filter(p => p !== null);
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mapa de Calor AIFU</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+<style>
+#map { height: 100vh; width: 100vw; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+var map = L.map('map').setView([0,0], 2);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18
+}).addTo(map);
+
+var heat = L.heatLayer([${heatPoints.join(',')}], {radius: 25}).addTo(map);
+</script>
+</body>
+</html>
+    `;
+
+    fs.writeFileSync(MAPA_FILE, html);
+}
+
+/**
+ * Verificar si usuario es VIP
+ */
+function esVIP(usuarioID) {
+    const reportes = leerReportes();
+    const usuario = reportes.find(r => r.usuario === usuarioID && r.vip);
+    return usuario ? true : false;
+}
+
+/**
+ * Obtener reportes de un usuario
+ */
+function obtenerReportesUsuario(usuarioID) {
+    const reportes = leerReportes();
+    return reportes.filter(r => r.usuario === usuarioID);
+}
+
+/**
+ * Obtener reportes visibles para un usuario
+ * - VIP ve todo
+ * - Normal ve solo lo propio
+ */
+function obtenerReportesVisibles(usuarioID) {
+    if (esVIP(usuarioID)) return leerReportes();
+    return obtenerReportesUsuario(usuarioID);
+}
+
+module.exports = {
+    leerReportes,
+    guardarReporte,
+    actualizarMapa,
+    esVIP,
+    obtenerReportesUsuario,
+    obtenerReportesVisibles
+};

@@ -1,0 +1,19 @@
+// Pack.js
+const fs = require('fs');
+const path = require('path');
+const DATA_FILE = path.join(__dirname, 'data.json');
+
+function guardarReporte(reporte) {
+    let data = [];
+    try {
+        const json = fs.readFileSync(DATA_FILE, 'utf8');
+        data = JSON.parse(json);
+    } catch (err) {
+        // Si no existe el archivo o está vacío, empezamos con array vacío
+        data = [];
+    }
+    data.push(reporte);
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
+
+module.exports = { guardarReporte };

@@ -1,0 +1,173 @@
+// bot.js
+const { Telegraf, Markup } = require('telegraf');
+const Pack = require('./Pack.js');
+
+// Poné tu token de Telegram aquí
+const BOT_TOKEN = '8701174108:AAGCEId4i2BXdVUcpDv7DyHRjXml4pv6Wt0';
+const bot = new Telegraf(BOT_TOKEN);
+
+// Guardar el estado de cada usuario (para paso a paso)
+const estados = {};
+
+// Paso 1: Saludo inicial
+bot.start(ctx => {
+    estados[ctx.from.id] = { paso: 'inicio' };
+    ctx.reply(
+        `Hola ${ctx.from.first_name}, soy Aifucito, tu asistente ufológico.\n` +
+        `¿Querés hacer un reporte de un avistamiento?`,
+        Markup.inlineKeyboard([
+            Markup.button.callback('Sí', 'reporte_si'),
+            Markup.button.callback('No', 'reporte_no')
+        ])
+    );
+});
+
+// Paso 2: Usuario responde si quiere hacer un reporte
+bot.action('reporte_no', ctx => {
+    ctx.reply('Ok, cualquier cosa me escribís y hablamos de los avistamientos.');
+});
+
+bot.action('reporte_si', ctx => {
+    estados[ctx.from.id].paso = 'pais';
+    ctx.reply('Primero, de qué país estás reportando el evento?');
+});
+
+// Paso 3: País
+bot.on('text', ctx => {
+    const userId = ctx.from.id;
+    const estado = estados[userId];
+
+    if (!estado) return;
+
+    if (estado.paso === 'pais') {
+        estado.pais = ctx.message.text;
+        estado.paso = 'ciudad';
+        ctx.reply('Ahora, en qué ciudad o barrio ocurrió el evento?');
+        return;
+    }
+
+    if (estado.paso === 'ciudad') {
+        estado.ciudad = ctx.message.text;
+        estado.paso = 'descripcion';
+        ctx.reply('Describí brevemente lo que viste:');
+        return;
+    }
+
+    if (estado.paso === 'descripcion') {
+        estado.descripcion = ctx.message.text;
+        estado.paso = 'intensidad';
+        ctx.reply('Qué intensidad tuvo el avistamiento?', Markup.inlineKeyboard([
+            Markup.button.callback('Verde', 'verde'),
+            Markup.button.callback('Amarillo', 'amarillo'),
+            Markup.button.callback('Rojo', 'rojo')
+        ]));
+        return;
+    }
+});
+
+// Paso 4: Intensidad
+bot.action(/verde|amarillo|rojo/, ctx => {
+    const userId = ctx.from.id;
+    const estado = estados[userId];
+    estado.intensidad = ctx.match[0];
+    estado.paso = 'confirmar';
+
+    // Preguntar si quiere dar ubicación GPS o manual
+    ctx.reply('Querés dar la ubicación automática (GPS) o manual?', Markup.inlineKeyboard([
+        Markup.button.callback('GPS', 'gps'),
+        Markup.button.callback('Manual', 'manual')
+    ]));
+});
+
+// Paso 5: Ubicación
+bot.action('gps', ctx => {
+    const userId = ctx.from.id;
+    const estado = estados[userId];
+    estado.ubicacionTipo = 'gps';
+    ctx.reply('Por ahora vamos a usar la ubicación GPS ficticia para pruebas.');
+    // Guardamos coordenadas de ejemplo
+    estado.gps = { lat: 0.0, lon: 0.0 };
+    confirmarReporte(ctx);
+});
+
+bot.action('manual', ctx => {
+    const userId = ctx.from.id;
+    const estado = estados[userId];
+    estado.ubicacionTipo = 'manual';
+    estado.paso = 'ubicacion_manual';
+    ctx.reply('Por favor, escribí las coordenadas o dirección del evento (lat, lon o descripción):');
+});
+
+// Recibir ubicación manual
+bot.on('text', ctx => {
+    const userId = ctx.from.id;
+    const estado = estados[userId];
+    if (estado && estado.paso === 'ubicacion_manual') {
+        // Ejemplo simple: dividir por coma
+        const parts = ctx.message.text.split(',');
+        if (parts.length === 2) {
+            estado.gps = { lat: parseFloat(parts[0]), lon: parseFloat(parts[1]) };
+        } else {
+            estado.gps = null;
+            estado.ubicacionManual = ctx.message.text;
+        }
+        confirmarReporte(ctx);
+    }
+});
+
+// Función para mostrar resumen y guardar
+function confirmarReporte(ctx) {
+    const userId = ctx.from.id;
+    const estado = estados[userId];
+
+    const resumen = `Resumen del reporte:
+País: ${estado.pais}
+Ciudad: ${estado.ciudad}
+Descripción: ${estado.descripcion}
+Intensidad: ${estado.intensidad}
+Ubicación: ${estado.gps ? `${estado.gps.lat},${estado.gps.lon}` : estado.ubicacionManual || 'No especificada'}
+`;
+
+    ctx.reply(resumen, Markup.inlineKeyboard([
+        Markup.button.callback('Confirmar', 'confirmar_reporte'),
+        Markup.button.callback('Editar', 'editar_reporte')
+    ]));
+}
+
+// Confirmar o editar
+bot.action('confirmar_reporte', ctx => {
+    const userId = ctx.from.id;
+    const estado = estados[userId];
+
+    // Guardamos reporte en data.json usando Pack.js
+    const reporte = {
+        usuario: userId,
+        nombre: ctx.from.first_name,
+        pais: estado.pais,
+        ciudad: estado.ciudad,
+        gps: estado.gps,
+        descripcion: estado.descripcion,
+        intensidad: estado.intensidad,
+        fecha: new Date().toISOString().split('T')[0],
+        vip: false,
+        archivos: []
+    };
+    Pack.guardarReporte(reporte);
+
+    ctx.reply('Tu reporte fue guardado correctamente! Gracias por colaborar con AIFU.');
+    delete estados[userId];
+});
+
+bot.action('editar_reporte', ctx => {
+    ctx.reply('Por ahora vamos a reiniciar el reporte. Escribí /start para volver a comenzar.');
+    delete estados[ctx.from.id];
+});
+
+// Arrancar bot
+bot.launch().then(() => {
+    console.log('Bot iniciado correctamente');
+});
+
+// Manejo de cierre
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
