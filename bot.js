@@ -1,18 +1,20 @@
-// bot.js - AIFU Bot Full HD VIP listo para Render con webhook
+// bot.js
+require('dotenv').config(); // opcional, si usas .env local
 const { Telegraf, Markup } = require('telegraf');
 const Pack = require('./Pack.js');
-const fs = require('fs');
+const fs = require('fs-extra');
 const express = require('express');
 
-const BOT_TOKEN = process.env.BOT_TOKEN; // Variable de entorno en Render
-const WEBHOOK_URL = process.env.WEBHOOK_URL; // Variable de entorno en Render
-const PORT = process.env.PORT || 3000;
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const WEBHOOK_URL = process.env.WEBHOOK_URL; // la URL de tu Render
+if (!BOT_TOKEN || !WEBHOOK_URL) {
+    console.error('Falta BOT_TOKEN o WEBHOOK_URL en variables de entorno');
+    process.exit(1);
+}
 
 const bot = new Telegraf(BOT_TOKEN);
-const app = express();
-
 const estados = {};
-const VIP_IDS = []; // IDs VIP manuales o desde data.json
+const VIP_IDS = []; // tus IDs VIP
 
 // ---- START ----
 bot.start(ctx => {
@@ -31,8 +33,7 @@ bot.start(ctx => {
 });
 
 bot.action('reporte_no', ctx => {
-    ctx.reply('Ok, cualquier cosa me escribís y hablamos de los avistamientos.\n' +
-              'Si querés ir a un canal, escribí /canales');
+    ctx.reply('Ok, cualquier cosa me escribís y hablamos de los avistamientos.\nSi querés ir a un canal, escribí /canales');
 });
 
 bot.action('reporte_si', ctx => {
@@ -53,13 +54,11 @@ bot.on('text', async ctx => {
             estado.paso = 'ciudad';
             ctx.reply('Ahora, ¿en qué ciudad o barrio ocurrió el evento?');
             break;
-
         case 'ciudad':
             estado.ciudad = ctx.message.text;
             estado.paso = 'descripcion';
             ctx.reply('Describí brevemente lo que viste:');
             break;
-
         case 'descripcion':
             estado.descripcion = ctx.message.text;
             estado.paso = 'analisis';
@@ -70,7 +69,6 @@ bot.on('text', async ctx => {
                 '- ¿Color, forma o luces observadas?'
             );
             break;
-
         case 'analisis':
             estado.analisis = ctx.message.text;
             estado.paso = 'intensidad';
@@ -80,7 +78,6 @@ bot.on('text', async ctx => {
                 Markup.button.callback('Rojo', 'rojo')
             ]));
             break;
-
         case 'ubicacion_manual':
             const parts = ctx.message.text.split(',');
             if(parts.length === 2){
@@ -142,7 +139,6 @@ Intensidad: ${estado.intensidad}
 Ubicación: ${estado.gps ? `${estado.gps.lat},${estado.gps.lon}` : estado.ubicacionManual || 'No especificada'}
 Archivo: ${estado.archivo ? estado.archivo.file_name : 'No subido'}
 `;
-
     ctx.reply(resumen, Markup.inlineKeyboard([
         Markup.button.callback('Confirmar', 'confirmar_reporte'),
         Markup.button.callback('Editar', 'editar_reporte')
@@ -185,41 +181,11 @@ bot.command('canales', ctx => {
         'AIFU AR: https://t.me/+jzzJi-2HPJk3OGUx');
 });
 
-bot.command('reportes', ctx => {
-    const estado = estados[ctx.from.id] || {};
-    if (!estado.vip) return ctx.reply('Solo usuarios VIP pueden ver los reportes completos.');
-    const reportes = Pack.leerReportes().slice(-5).map(r => `${r.fecha} - ${r.ciudad}, ${r.descripcion}`).join('\n') || 'No hay reportes recientes';
-    ctx.reply(`Últimos reportes:\n${reportes}`);
+// ---- EXPRESS + WEBHOOK ----
+const app = express();
+app.use(bot.webhookCallback('/aifu-webhook')); // ruta única
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Servidor escuchando en puerto ${PORT}, webhook: ${WEBHOOK_URL}/aifu-webhook`);
 });
-
-bot.command('mapa', ctx => {
-    ctx.reply('Mapa de calor de avistamientos: abre el archivo mapa_calor/mapa.html en tu navegador.');
-});
-
-bot.command('estadisticas', ctx => {
-    const estado = estados[ctx.from.id] || {};
-    if (!estado.vip) return ctx.reply('Solo usuarios VIP pueden ver estadísticas.');
-    const reportes = Pack.leerReportes();
-    const total = reportes.length;
-    const porPais = {};
-    reportes.forEach(r => { porPais[r.pais] = (porPais[r.pais] || 0) + 1; });
-    let msg = `Estadísticas:\nTotal reportes: ${total}\nPor país:\n`;
-    for (const pais in porPais) msg += `${pais}: ${porPais[pais]}\n`;
-    ctx.reply(msg);
-});
-
-// ---- LANZAR BOT CON WEBHOOK ----
-bot.launch({
-    webhook: {
-        domain: WEBHOOK_URL,
-        port: PORT,
-        hookPath: `/webhook/${BOT_TOKEN}`
-    }
-});
-
-app.get('/', (req, res) => res.send('Bot AIFU activo'));
-app.listen(PORT, () => console.log(`Servidor escuchando en puerto ${PORT}`));
-
-// Detener bot correctamente al cerrar proceso
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+bot.telegram.setWebhook(`${WEBHOOK_URL}/aifu-webhook`);
