@@ -2,13 +2,13 @@ console.log("TOKEN CARGADO:", process.env.BOT_TOKEN ? "SI" : "NO");
 const { Telegraf, Markup } = require('telegraf');
 const fs = require('fs');
 const path = require('path');
+const express = require('express'); // <-- agregado para servidor HTTP
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
 // ========= CONFIG =========
 
 const ADMIN_ID = 000000000; // ← TU ID
-
 const FECHA_CORTE_FUNDADOR = new Date('2026-04-01');
 
 const CANALES = {
@@ -235,5 +235,21 @@ Reportes totales: ${reportes.length}`
   );
 });
 
+// ========= LANZAMIENTO =========
+
+// Servidor HTTP para Render (puerto obligatorio)
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Servir archivos estáticos (mapas, multimedia)
+app.use('/archivos', express.static(path.join(__dirname, 'uploads')));
+
+// Endpoint de prueba
+app.get('/', (req, res) => res.send('AIFUCITO Web Service activo'));
+
+// Iniciar servidor
+app.listen(PORT, () => console.log(`Servidor web escuchando en puerto ${PORT}`));
+
+// Lanzamiento del bot Telegram
 bot.launch();
 console.log("AIFUCITO 4.2 activo");
