@@ -1,4 +1,4 @@
-// ================= BOT AIFUCITO 4.3 COMPLETO =================
+// ================= BOT AIFUCITO 4.3 DEFINITIVO =================
 console.log("TOKEN CARGADO:", process.env.BOT_TOKEN ? "SI" : "NO");
 
 const { Telegraf, Markup } = require('telegraf');
@@ -12,17 +12,21 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 // ========= CONFIG =========
 const ADMIN_ID = 000000000; // TU ID
 const FECHA_CORTE_FUNDADOR = new Date('2026-04-01');
-const CANALES = {
-  radar: '@aifu_radar',
-  uy: '@aifu_uy',
-  ar: '@aifu_ar',
-  cl: '@aifu_cl'
-};
+
+// ==== NUEVOS GRUPOS ====
 const GRUPOS = {
   uy: -1001234567890,
   ar: -1002345678901,
   cl: -1003456789012,
   otros: -1004567890123
+};
+
+// Canales para publicaciones tipo radar
+const CANALES = {
+  radar: '@aifu_radar',
+  uy: '@aifu_uy',
+  ar: '@aifu_ar',
+  cl: '@aifu_cl'
 };
 
 // ========= DATA =========
@@ -123,9 +127,9 @@ Todos los usuarios ahora tienen acceso completo a funcionalidades VIP:
 
 // ========= REPORTE =========
 let sesiones = {};
-let reportesRecientes = {}; // { 'uy': [timestamp1, ...] }
+let reportesRecientes = {}; // para alertas por país
 
-// Función de geocoding OpenStreetMap
+// Función de geocoding con Nominatim
 async function geocode(ciudad, pais) {
   try {
     const query = encodeURIComponent(`${ciudad}, ${pais}`);
@@ -138,6 +142,11 @@ async function geocode(ciudad, pais) {
   return { lat: -32.5, lng: -55.9 }; // fallback
 }
 
+bot.hears('Reportar', ctx => {
+  sesiones[ctx.from.id] = { estado: 'ubicacion' };
+  ctx.reply("Indica ciudad y país (ej: Montevideo, uy).");
+});
+
 // Detectar reportes dudosos
 function esReporteDudoso(reporte) {
   const spam = !reporte.mensaje || reporte.mensaje.length < 5;
@@ -148,11 +157,6 @@ function esReporteDudoso(reporte) {
 function agregarReportePendiente(reporte) {
   reportesPendientes.push(reporte);
 }
-
-bot.hears('Reportar', ctx => {
-  sesiones[ctx.from.id] = { estado: 'ubicacion' };
-  ctx.reply("Indica ciudad y país (ej: Montevideo, uy).");
-});
 
 // ========= PERSONALIDAD =========
 const frasesAmistosas = [
@@ -246,6 +250,7 @@ bot.on('text', async ctx => {
       } else {
         reportes.push(nuevoReporte);
         guardarDatos();
+        // Publicar también en canal tipo radar
         publicarReporte(nuevoReporte);
         ctx.reply("Reporte registrado correctamente.");
       }
@@ -313,7 +318,7 @@ bot.hears('Mapa de calor', ctx => {
   ctx.reply(
     "🌐 Abre el mapa de calor actualizado:",
     Markup.inlineKeyboard([
-      [Markup.button.url("Ver mapa de calor", "https://<tu-servicio>.onrender.com/mapa/mapa.html")]
+      [Markup.button.url("Ver mapa de calor", "https://aifu-2-5.onrender.com/")]
     ])
   );
 });
