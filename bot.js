@@ -1,4 +1,4 @@
-// ================= BOT AIFUCITO 4.2 COMPLETO =================
+// ================= BOT AIFUCITO 4.3 COMPLETO =================
 console.log("TOKEN CARGADO:", process.env.BOT_TOKEN ? "SI" : "NO");
 
 const { Telegraf, Markup } = require('telegraf');
@@ -17,6 +17,12 @@ const CANALES = {
   uy: '@aifu_uy',
   ar: '@aifu_ar',
   cl: '@aifu_cl'
+};
+const GRUPOS = {
+  uy: -1001234567890,
+  ar: -1002345678901,
+  cl: -1003456789012,
+  otros: -1004567890123
 };
 
 // ========= DATA =========
@@ -69,7 +75,7 @@ function activarVIP(userId, metodo) {
 // ========= MENÚ =========
 bot.start(ctx => {
   ctx.reply(
-`👽 AIFUCITO 4.2
+`👽 AIFUCITO 4.3
 Sistema Oficial RED AIFU`,
     Markup.keyboard([
       ['Reportar', 'Mi estado'],
@@ -117,11 +123,20 @@ Todos los usuarios ahora tienen acceso completo a funcionalidades VIP:
 
 // ========= REPORTE =========
 let sesiones = {};
+let reportesRecientes = {}; // { 'uy': [timestamp1, ...] }
 
-bot.hears('Reportar', ctx => {
-  sesiones[ctx.from.id] = { estado: 'ubicacion' };
-  ctx.reply("Indica ciudad y país.");
-});
+// Función de geocoding OpenStreetMap
+async function geocode(ciudad, pais) {
+  try {
+    const query = encodeURIComponent(`${ciudad}, ${pais}`);
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`);
+    const data = await res.json();
+    if (data.length > 0) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+  } catch (e) {
+    console.error('Error geocoding:', e);
+  }
+  return { lat: -32.5, lng: -55.9 }; // fallback
+}
 
 // Detectar reportes dudosos
 function esReporteDudoso(reporte) {
@@ -130,10 +145,14 @@ function esReporteDudoso(reporte) {
   return spam || violento;
 }
 
-// Agregar reporte dudoso
 function agregarReportePendiente(reporte) {
   reportesPendientes.push(reporte);
 }
+
+bot.hears('Reportar', ctx => {
+  sesiones[ctx.from.id] = { estado: 'ubicacion' };
+  ctx.reply("Indica ciudad y país (ej: Montevideo, uy).");
+});
 
 // ========= PERSONALIDAD =========
 const frasesAmistosas = [
@@ -172,7 +191,7 @@ function mensajeVIP(userId) {
 }
 
 // ========= ESCUCHA MENSAJES =========
-bot.on('text', ctx => {
+bot.on('text', async ctx => {
   const id = ctx.from.id;
 
   if (sesiones[id]) {
@@ -184,17 +203,42 @@ bot.on('text', ctx => {
       return;
     }
     if (sesion.estado === 'mensaje') {
+      const partes = sesion.ubicacion.split(',');
+      const ciudad = partes[0].trim();
+      const pais = partes[1] ? partes[1].trim().toLowerCase() : 'otros';
+
+      const { lat, lng } = await geocode(ciudad, pais);
+
       const nuevoReporte = {
         id: Date.now(),
         usuario: id,
         fecha: new Date().toISOString(),
         mensaje: ctx.message.text,
-        ubicacion: sesion.ubicacion,
+        ubicacion: ciudad,
+        pais: pais,
         categoria: "luz",
         vip: true,
-        lat: -32.5, // por defecto, se puede mejorar con geocoding
-        lng: -55.9
+        lat,
+        lng
       };
+
+      // Almacenamiento reciente para alertas
+      if (!reportesRecientes[pais]) reportesRecientes[pais] = [];
+      reportesRecientes[pais].push(Date.now());
+      reportesRecientes[pais] = reportesRecientes[pais].filter(ts => Date.now() - ts < 45*60*1000);
+
+      // Envío a grupo correspondiente
+      const grupoDestino = GRUPOS[pais] || GRUPOS.otros;
+      bot.telegram.sendMessage(grupoDestino,
+        `📡 Nuevo reporte\nUbicación: ${ciudad}, ${pais.toUpperCase()}\nFecha: ${nuevoReporte.fecha}\nCategoría: ${nuevoReporte.categoria}\n⭐ Usuario VIP`
+      );
+
+      // Alerta si >=5 reportes recientes
+      if (reportesRecientes[pais].length >= 5) {
+        bot.telegram.sendMessage(grupoDestino,
+          `⚠️ Alerta: 5 reportes recientes de fenómenos en ${ciudad}, ${pais.toUpperCase()} en los últimos 45 minutos.`
+        );
+      }
 
       if (esReporteDudoso(nuevoReporte)) {
         agregarReportePendiente(nuevoReporte);
@@ -205,6 +249,7 @@ bot.on('text', ctx => {
         publicarReporte(nuevoReporte);
         ctx.reply("Reporte registrado correctamente.");
       }
+
       delete sesiones[id];
       return;
     }
@@ -282,14 +327,14 @@ app.use('/mapa', express.static(path.join(__dirname, 'mapa')));
 
 app.get('/', (req,res) => res.send('AIFUCITO Web Service activo'));
 
-// Endpoint para heatmap
 app.get('/api/reportes', (req,res) => {
   const visibles = reportes.map(r => ({
     id: r.id,
     mensaje: r.mensaje,
     ubicacion: r.ubicacion,
-    lat: r.lat || -32.5,
-    lng: r.lng || -55.9
+    pais: r.pais,
+    lat: r.lat,
+    lng: r.lng
   }));
   res.json(visibles);
 });
@@ -346,4 +391,4 @@ Reportes totales: ${reportes.length}`);
 // ========= LANZAR SERVIDOR Y BOT =========
 app.listen(PORT, () => console.log(`Servidor web escuchando en puerto ${PORT}`));
 bot.launch();
-console.log("AIFUCITO 4.2 activo");
+console.log("AIFUCITO 4.3 DEFINITIVO + ALERTAS activo");
