@@ -1,4 +1,4 @@
-// ================= BOT AIFUCITO 4.3 DEFINITIVO =================
+// ================= BOT AIFUCITO 4.3 DEFINITIVO + HUMANO =================
 console.log("TOKEN CARGADO:", process.env.BOT_TOKEN ? "SI" : "NO");
 
 const { Telegraf, Markup } = require('telegraf');
@@ -76,16 +76,61 @@ function activarVIP(userId, metodo) {
   guardarDatos();
 }
 
-// ========= MENÚ =========
+// ========= PERSONALIDAD =========
+const frasesAmistosas = [
+  "¡Hola, explorador de lo desconocido! 👽",
+  "¡Qué gusto verte de nuevo en AIFU! 🌌",
+  "Recuerda: los fenómenos no esperan… pero tu café sí ☕",
+  "Eres uno de nuestros curiosos más dedicados, ¡gracias por estar aquí! ⭐"
+];
+
+const frasesBromas = [
+  "Si veo un OVNI y no me avisás, me pongo celoso 👀",
+  "Cuidado con los extraterrestres, algunos dicen que bailan salsa 💃🛸",
+  "Si fueras un alienígena, serías de los VIP 😎"
+];
+
+const frasesFirmes = [
+  "Recuerda reportar solo fenómenos reales, sin spam ni palabras violentas ⚠️",
+  "Tu reporte fue marcado para revisión, mantenemos la calidad AIFU 💼",
+  "No toleramos lenguaje ofensivo. Mantén la cordialidad 🛡"
+];
+
+function saludoAleatorio() {
+  const r = Math.random();
+  if (r < 0.5) return frasesAmistosas[Math.floor(Math.random() * frasesAmistosas.length)];
+  else return frasesBromas[Math.floor(Math.random() * frasesBromas.length)];
+}
+
+function mensajeVIP(userId) {
+  if (!esVIP(userId)) return null;
+  const vipMsg = [
+    "⭐ Gracias por ser VIP, eres parte de nuestra élite de exploradores.",
+    "¡Tu radar VIP está activo! Mantente atento a los fenómenos.",
+    "Como VIP, recibes alertas antes que todos. No abuses de tu poder 😜"
+  ];
+  return vipMsg[Math.floor(Math.random() * vipMsg.length)];
+}
+
+// ========= MENÚ PRINCIPAL =========
 bot.start(ctx => {
   ctx.reply(
-`👽 AIFUCITO 4.3
-Sistema Oficial RED AIFU`,
+`👽 ¡Bienvenido a AIFUCITO 4.3! 🌌
+Soy tu asistente virtual de la Red AIFU.
+Aquí podrás reportar fenómenos, ver mapas de calor y unirte a nuestra comunidad de exploradores.`,
     Markup.keyboard([
       ['Reportar', 'Mi estado'],
       ['Hazte VIP', 'Red AIFU'],
       ['Mapa de calor']
     ]).resize()
+  );
+});
+
+// ========= COMANDO PARA EXPLICAR LA RED =========
+bot.command('quienes_somos', ctx => {
+  ctx.reply(
+"🌌 **Red AIFU**: Somos observadores del cielo del Cono Sur. Registramos luces, OVNIs y fenómenos extraordinarios. Cada reporte ayuda a crear un mapa de calor de fenómenos en tu país y región. ¡Únete y comparte tus observaciones!",
+    { parse_mode: 'Markdown' }
   );
 });
 
@@ -125,11 +170,10 @@ Todos los usuarios ahora tienen acceso completo a funcionalidades VIP:
   );
 });
 
-// ========= REPORTE =========
+// ========= REPORTE PASO A PASO =========
 let sesiones = {};
-let reportesRecientes = {}; // para alertas por país
+let reportesRecientes = {};
 
-// Función de geocoding con Nominatim
 async function geocode(ciudad, pais) {
   try {
     const query = encodeURIComponent(`${ciudad}, ${pais}`);
@@ -147,7 +191,6 @@ bot.hears('Reportar', ctx => {
   ctx.reply("Indica ciudad y país (ej: Montevideo, uy).");
 });
 
-// Detectar reportes dudosos
 function esReporteDudoso(reporte) {
   const spam = !reporte.mensaje || reporte.mensaje.length < 5;
   const violento = /(matar|odio|explosión)/i.test(reporte.mensaje);
@@ -158,54 +201,21 @@ function agregarReportePendiente(reporte) {
   reportesPendientes.push(reporte);
 }
 
-// ========= PERSONALIDAD =========
-const frasesAmistosas = [
-  "¡Hola, explorador de lo desconocido! 👽",
-  "¡Qué gusto verte de nuevo en AIFU! 🌌",
-  "Recuerda: los fenómenos no esperan… pero tu café sí ☕",
-  "Eres uno de nuestros curiosos más dedicados, ¡gracias por estar aquí! ⭐"
-];
-
-const frasesBromas = [
-  "Si veo un OVNI y no me avisás, me pongo celoso 👀",
-  "Cuidado con los extraterrestres, algunos dicen que bailan salsa 💃🛸",
-  "Si fueras un alienígena, serías de los VIP 😎"
-];
-
-const frasesFirmes = [
-  "Recuerda reportar solo fenómenos reales, sin spam ni palabras violentas ⚠️",
-  "Tu reporte fue marcado para revisión, mantenemos la calidad AIFU 💼",
-  "No toleramos lenguaje ofensivo. Mantén la cordialidad 🛡"
-];
-
-function saludoAleatorio() {
-  const r = Math.random();
-  if (r < 0.5) return frasesAmistosas[Math.floor(Math.random() * frasesAmistosas.length)];
-  else return frasesBromas[Math.floor(Math.random() * frasesBromas.length)];
-}
-
-function mensajeVIP(userId) {
-  if (!esVIP(userId)) return null;
-  const vipMsg = [
-    "⭐ Gracias por ser VIP, eres parte de nuestra élite de exploradores.",
-    "¡Tu radar VIP está activo! Mantente atento a los fenómenos.",
-    "Como VIP, recibes alertas antes que todos. No abuses de tu poder 😜"
-  ];
-  return vipMsg[Math.floor(Math.random() * vipMsg.length)];
-}
-
-// ========= ESCUCHA MENSAJES =========
 bot.on('text', async ctx => {
   const id = ctx.from.id;
+  const texto = ctx.message.text.toLowerCase();
 
+  // ===== REPORTE PASO A PASO =====
   if (sesiones[id]) {
     const sesion = sesiones[id];
+
     if (sesion.estado === 'ubicacion') {
       sesion.ubicacion = ctx.message.text;
       sesion.estado = 'mensaje';
       ctx.reply("Describe el fenómeno.");
       return;
     }
+
     if (sesion.estado === 'mensaje') {
       const partes = sesion.ubicacion.split(',');
       const ciudad = partes[0].trim();
@@ -226,18 +236,15 @@ bot.on('text', async ctx => {
         lng
       };
 
-      // Almacenamiento reciente para alertas
       if (!reportesRecientes[pais]) reportesRecientes[pais] = [];
       reportesRecientes[pais].push(Date.now());
       reportesRecientes[pais] = reportesRecientes[pais].filter(ts => Date.now() - ts < 45*60*1000);
 
-      // Envío a grupo correspondiente
       const grupoDestino = GRUPOS[pais] || GRUPOS.otros;
       bot.telegram.sendMessage(grupoDestino,
         `📡 Nuevo reporte\nUbicación: ${ciudad}, ${pais.toUpperCase()}\nFecha: ${nuevoReporte.fecha}\nCategoría: ${nuevoReporte.categoria}\n⭐ Usuario VIP`
       );
 
-      // Alerta si >=5 reportes recientes
       if (reportesRecientes[pais].length >= 5) {
         bot.telegram.sendMessage(grupoDestino,
           `⚠️ Alerta: 5 reportes recientes de fenómenos en ${ciudad}, ${pais.toUpperCase()} en los últimos 45 minutos.`
@@ -250,9 +257,8 @@ bot.on('text', async ctx => {
       } else {
         reportes.push(nuevoReporte);
         guardarDatos();
-        // Publicar también en canal tipo radar
         publicarReporte(nuevoReporte);
-        ctx.reply("Reporte registrado correctamente.");
+        ctx.reply("✅ Reporte registrado correctamente. Gracias por tu colaboración.");
       }
 
       delete sesiones[id];
@@ -260,7 +266,7 @@ bot.on('text', async ctx => {
     }
   }
 
-  const texto = ctx.message.text.toLowerCase();
+  // ===== SALUDOS, RESPUESTAS AMISTOSAS =====
   if (texto.includes('hola') || texto.includes('buenos')) {
     let msg = saludoAleatorio();
     const vipMsg = mensajeVIP(id);
@@ -268,20 +274,34 @@ bot.on('text', async ctx => {
     ctx.reply(msg);
     return;
   }
+
   if (texto.includes('gracias') || texto.includes('muy bien')) {
     ctx.reply("¡De nada! Recuerda que los cielos siempre tienen secretos 🌌");
     return;
   }
+
   if (texto.includes('problema') || texto.includes('error')) {
     ctx.reply("Tranquilo, amigo. Estamos aquí para ayudarte. Si es sobre un reporte, ¡hazlo bien detallado! 🛠");
     return;
   }
+
   if (texto.length < 3 || /(spam|odio|matar|explosión)/i.test(texto)) {
     ctx.reply(frasesFirmes[Math.floor(Math.random() * frasesFirmes.length)]);
     return;
   }
 
-  ctx.reply("¡Interesante! 🌠 ¿Quieres reportar un fenómeno o ver el mapa de calor?");
+  // Pregunta por opciones
+  if (texto.includes('mapa')) {
+    bot.telegram.sendMessage(id,
+      "🌐 Abre el mapa de calor actualizado:",
+      Markup.inlineKeyboard([
+        [Markup.button.url("Ver mapa de calor", "https://aifu-2-5.onrender.com/")]
+      ])
+    );
+    return;
+  }
+
+  ctx.reply("¡Interesante! 🌠 ¿Quieres reportar un fenómeno, ver el mapa de calor o conocer la Red AIFU?");
 });
 
 // ========= SUBIDA DE ARCHIVOS =========
@@ -313,16 +333,6 @@ Categoría: ${reporte.categoria}`;
   bot.telegram.sendMessage(CANALES.radar, texto);
 }
 
-// ========= MAPA DE CALOR =========
-bot.hears('Mapa de calor', ctx => {
-  ctx.reply(
-    "🌐 Abre el mapa de calor actualizado:",
-    Markup.inlineKeyboard([
-      [Markup.button.url("Ver mapa de calor", "https://aifu-2-5.onrender.com/")]
-    ])
-  );
-});
-
 // ========= EXPRESS + ENDPOINTS =========
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -331,7 +341,6 @@ app.use('/archivos', express.static(uploadsDir));
 app.use('/mapa', express.static(path.join(__dirname, 'mapa')));
 
 app.get('/', (req,res) => res.send('AIFUCITO Web Service activo'));
-
 app.get('/api/reportes', (req,res) => {
   const visibles = reportes.map(r => ({
     id: r.id,
@@ -396,4 +405,4 @@ Reportes totales: ${reportes.length}`);
 // ========= LANZAR SERVIDOR Y BOT =========
 app.listen(PORT, () => console.log(`Servidor web escuchando en puerto ${PORT}`));
 bot.launch();
-console.log("AIFUCITO 4.3 DEFINITIVO + ALERTAS activo");
+console.log("AIFUCITO 4.3 DEFINITIVO + HUMANO + ALERTAS activo");
